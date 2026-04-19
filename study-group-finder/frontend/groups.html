@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>StudySync — Groups</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <nav>
+    <span class="logo">StudySync_</span>
+    <div class="nav-links">
+      <a href="groups.html">Groups</a>
+      <a href="requests.html">Requests</a>
+      <a href="#" onclick="logout()">Logout</a>
+    </div>
+  </nav>
+
+  <div class="container">
+    <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:12px; margin-bottom:8px;">
+      <div>
+        <div class="page-title">Study Groups</div>
+        <div class="page-sub">Browse and join active groups</div>
+      </div>
+      <button class="btn btn-primary" onclick="openModal()">+ New Group</button>
+    </div>
+
+    <div id="alert" class="alert"></div>
+
+    <div class="filter-bar">
+      <select id="subject-filter" onchange="loadGroups()">
+        <option value="">All subjects</option>
+      </select>
+    </div>
+
+    <div id="groups-list"></div>
+  </div>
+
+  <!-- Create Group Modal -->
+  <div class="modal-bg" id="modal">
+    <div class="modal">
+      <div class="modal-title">Create a Group</div>
+      <div id="modal-alert" class="alert"></div>
+      <div class="form-group">
+        <label>Group Name</label>
+        <input type="text" id="g-name" placeholder="e.g. CS Algorithms Study Gang">
+      </div>
+      <div class="form-group">
+        <label>Subject</label>
+        <select id="g-subject"></select>
+      </div>
+      <div class="form-group">
+        <label>Max Members</label>
+        <input type="number" id="g-size" value="10" min="2" max="50">
+      </div>
+      <div class="form-group">
+        <label>Session Date & Time</label>
+        <input type="datetime-local" id="g-schedule">
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="createGroup()">Create</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="utils.js"></script>
+  <script>
+    requireAuth();
+
+    async function init() {
+      try {
+        const data = await apiFetch('/groups/subjects');
+        data.forEach(s => {
+          document.getElementById('subject-filter').appendChild(new Option(s.name, s.subject_id));
+          document.getElementById('g-subject').appendChild(new Option(s.name, s.subject_id));
+        });
+      } catch {}
+      loadGroups();
+    }
+
+    async function loadGroups() {
+      const subject_id = document.getElementById('subject-filter').value;
+      const list = document.getElementById('groups-list');
+      list.innerHTML = '<div class="empty"><span>⏳</span>Loading...</div>';
+      try {
+        const url = subject_id ? `/groups?subject_id=${subject_id}` : '/groups';
+        const groups = await apiFetch(url);
+        if (!groups.length) {
+          list.innerHTML = '<div class="empty"><span>📚</span>No active groups yet. Create one!</div>';
+          return;
+        }
+        list.innerHTML = groups.map(g => `
+          <div class="card">
+            <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:8px;">
+              <div>
+                <div class="card-title">${g.group_name}</div>
+                <div class="card-meta">
+                  <span class="badge badge-green">${g.subject}</span>
+                  &nbsp;${g.current_members} / ${g.max_size} members
+                  ${g.schedule_time ? `&nbsp;· 🗓 ${formatDate(g.schedule_time)}` : ''}
+                </div>
+              </div>
+              <span class="${g.current_members >= g.max_size ? 'badge badge-red' : 'badge badge-green'}">
+                ${g.current_members >= g.max_size ? 'Full' : 'Open'}
+              </span>
+            </div>
+            <div class="card-footer">
+              <button class="btn btn-outline btn-sm" onclick="openChat(${g.group_id}, '${g.group_name}')">💬 Chat</button>
+              <button class="btn btn-primary btn-sm" onclick="sendRequest(${g.group_id})"
+                ${g.current_members >= g.max_size ? 'disabled style="opacity:0.4;cursor:not-allowed"' : ''}>
+                Request to Join
+              </button>
+            </div>
+          </div>
+        `).join('');
+      } catch (err) {
+        showAlert(document.getElementById('alert'), err.message);
+      }
+    }
+
+    async function sendRequest(group_id) {
+      try {
+        await apiFetch('/requests', { method: 'POST', body: JSON.stringify({ group_id }) });
+        showAlert(document.getElementById('alert'), 'Join request sent!', 'success');
+      } catch (err) {
+        showAlert(document.getElementById('alert'), err.message);
+      }
+    }
+
+    function openChat(group_id, group_name) {
+      window.location.href = `chat.html?group_id=${group_id}&group_name=${encodeURIComponent(group_name)}`;
+    }
+
+    function openModal()  { document.getElementById('modal').classList.add('show'); }
+    function closeModal() { document.getElementById('modal').classList.remove('show'); }
+
+    async function createGroup() {
+      const name          = document.getElementById('g-name').value.trim();
+      const subject_id    = document.getElementById('g-subject').value;
+      const max_size      = document.getElementById('g-size').value;
+      const schedule_time = document.getElementById('g-schedule').value;
+      try {
+        await apiFetch('/groups', {
+          method: 'POST',
+          body: JSON.stringify({ name, subject_id, max_size: parseInt(max_size), schedule_time }),
+        });
+        closeModal();
+        showAlert(document.getElementById('alert'), 'Group created!', 'success');
+        loadGroups();
+      } catch (err) {
+        showAlert(document.getElementById('modal-alert'), err.message);
+      }
+    }
+
+    init();
+  </script>
+</body>
+</html>

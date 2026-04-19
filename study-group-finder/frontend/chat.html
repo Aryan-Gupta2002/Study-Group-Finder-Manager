@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>StudySync — Chat</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <nav>
+    <span class="logo">StudySync_</span>
+    <div class="nav-links">
+      <a href="groups.html">← Back to Groups</a>
+      <a href="#" onclick="logout()">Logout</a>
+    </div>
+  </nav>
+
+  <div class="container">
+    <div class="page-title" id="chat-title">Chat</div>
+    <div class="page-sub">Group messages</div>
+
+    <div id="alert" class="alert"></div>
+
+    <div class="chat-wrap">
+      <div class="chat-messages" id="messages"></div>
+      <div class="chat-input-row">
+        <input type="text" id="msg-input" placeholder="Type a message..." onkeydown="if(event.key==='Enter') sendMessage()">
+        <button class="btn btn-primary" onclick="sendMessage()">Send</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="utils.js"></script>
+  <script>
+    requireAuth();
+
+    const params    = new URLSearchParams(window.location.search);
+    const group_id  = params.get('group_id');
+    const groupName = decodeURIComponent(params.get('group_name') || 'Group Chat');
+    const me        = getUser();
+
+    document.getElementById('chat-title').textContent = groupName;
+    if (!group_id) window.location.href = 'groups.html';
+
+    async function loadMessages() {
+      try {
+        const messages = await apiFetch(`/messages/${group_id}`);
+        const box = document.getElementById('messages');
+        if (!messages.length) {
+          box.innerHTML = '<div class="empty" style="margin:auto"><span>💬</span>No messages yet. Say hello!</div>';
+          return;
+        }
+        box.innerHTML = messages.map(m => {
+          const mine = m.sender_name === me?.name;
+          return `
+            <div class="msg ${mine ? 'mine' : 'theirs'}">
+              ${!mine ? `<div class="msg-sender">${m.sender_name}</div>` : ''}
+              <div class="msg-bubble">${escapeHtml(m.content)}</div>
+              <div class="msg-time">${formatTime(m.sent_at)}</div>
+            </div>
+          `;
+        }).join('');
+        box.scrollTop = box.scrollHeight;
+      } catch (err) {
+        showAlert(document.getElementById('alert'), err.message);
+      }
+    }
+
+    async function sendMessage() {
+      const input   = document.getElementById('msg-input');
+      const content = input.value.trim();
+      if (!content) return;
+      input.value = '';
+      try {
+        await apiFetch(`/messages/${group_id}`, {
+          method: 'POST',
+          body: JSON.stringify({ content }),
+        });
+        loadMessages();
+      } catch (err) {
+        showAlert(document.getElementById('alert'), err.message);
+        input.value = content;
+      }
+    }
+
+    function escapeHtml(str) {
+      return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    loadMessages();
+    setInterval(loadMessages, 5000);
+  </script>
+</body>
+</html>
